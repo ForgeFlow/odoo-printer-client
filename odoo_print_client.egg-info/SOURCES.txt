@@ -1,0 +1,13 @@
+LICENSE
+README.md
+pyproject.toml
+setup.py
+odoo_print_client/__init__.py
+odoo_print_client/cli.py
+odoo_print_client/core.py
+odoo_print_client.egg-info/PKG-INFO
+odoo_print_client.egg-info/SOURCES.txt
+odoo_print_client.egg-info/dependency_links.txt
+odoo_print_client.egg-info/entry_points.txt
+odoo_print_client.egg-info/requires.txt
+odoo_print_client.egg-info/top_level.txt

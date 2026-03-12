@@ -1,0 +1,12 @@
+# various virtualenv
+/bin/
+/build/
+/include/
+/lib/
+/man/
+/share/
+/src/
+
+
+# Env file
+.env

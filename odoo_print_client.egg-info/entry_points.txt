@@ -1,0 +1,2 @@
+[console_scripts]
+odoo-printer = odoo_print_client.cli:main
