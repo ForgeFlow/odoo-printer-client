@@ -45,6 +45,7 @@ For security reasons, do not pass passwords via the command line. Instead, creat
    ODOO_DB=your_database_name
    ODOO_USER=print_service_user
    ODOO_PASSWORD=your_super_secure_password
+   ODOO_CHANNEL=your_odoo_channel
    ```
 2. **Crucial Security Step:** Secure the file so only the owner can read it:
    ```bash

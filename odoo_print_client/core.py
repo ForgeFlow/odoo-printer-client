@@ -45,7 +45,7 @@ def process_print_job(payload_dict):
         print(f"[!] Unexpected error during printing: {e}")
 
 
-def run_client(url, db, user, password):
+def run_client(url, db, user, password, channel):
     """
     Authenticates with Odoo and starts the WebSocket listening loop.
     """
@@ -80,7 +80,7 @@ def run_client(url, db, user, password):
 
     socket.send(json.dumps({
         'event_name': 'subscribe',
-        'data': {'channels': ['printer'], 'last': 0}
+        'data': {'channels': [channel], 'last': 0}
     }))
 
     print("[*] Connected and listening on 'printer' channel...")
