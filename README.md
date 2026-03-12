@@ -1,16 +1,18 @@
 # Odoo Local Print Client
 
-A secure, zero-footprint local printing client for Odoo. This client connects to your Odoo instance via WebSockets, listens for print jobs on the Odoo Bus, and pipes the PDF documents directly to your local Linux print spooler (CUPS) without ever saving the files to disk.
+A secure, zero-footprint local printing client for Odoo. This client connects to your Odoo instance via WebSockets, listens for print jobs on the Odoo Bus, and pipes documents directly to your local Linux print spooler (CUPS) without ever saving files to disk.
 
 ## Features
 
-* **Zero Footprint (In-Memory Printing):** Documents are decoded in RAM and piped directly to the standard input (`stdin`) of the OS print command. No temporary files are created, ensuring maximum data privacy (GDPR compliant).
+* **Zero Footprint (In-Memory Printing):** Documents are decoded in RAM and piped directly to `stdin` of the OS print command. No temporary files are created, ensuring maximum data privacy (GDPR compliant).
+* **PDF and ZPL support:** Handles standard PDF documents as well as ZPL label files (sent raw to label printers such as Zebra).
 * **High Security:**
-  * Validates the file's Magic Bytes to ensure the payload is a genuine PDF (`%PDF`).
+  * Validates magic bytes: `%PDF` for PDF files, `^XA` for ZPL files.
   * Uses strict Base64 decoding.
   * Prevents OS Command Injection by executing subprocesses safely without `shell=True`.
+* **Configurable Channel:** Subscribe to any Odoo Bus channel via environment variable or CLI argument, allowing multiple clients to listen on different channels simultaneously.
 * **Firewall Friendly:** Uses WebSockets to initiate an outbound connection to Odoo. No inbound ports need to be opened on the client's local network.
-* **Environment Variables (.env):** Securely manage Odoo credentials without hardcoding them or passing them via command-line arguments.
+* **Environment Variables (.env):** Securely manage Odoo credentials without hardcoding them.
 
 ## Prerequisites
 
@@ -20,69 +22,120 @@ A secure, zero-footprint local printing client for Odoo. This client connects to
 
 ## Installation
 
-1. Clone or copy this repository to the target machine.
-2. Navigate to the project directory:
+### From PyPI
+
+```bash
+pip install odoo-print-client
+```
+
+### From source
+
+1. Clone the repository and navigate into it:
    ```bash
+   git clone https://github.com/forgeflow/odoo-print-client.git
    cd odoo-print-client
    ```
-3. (Optional but recommended) Create and activate a virtual environment:
+2. (Optional but recommended) Create and activate a virtual environment:
    ```bash
    python3 -m venv venv
    source venv/bin/activate
    ```
-4. Install the package using pip in editable mode:
+3. Install the package:
    ```bash
    pip install -e .
    ```
 
 ## Configuration
 
-For security reasons, do not pass passwords via the command line. Instead, create a `.env` file in the directory from which you will run the client.
+Create a `.env` file in the directory from which you will run the client:
 
-1. Create the `.env` file:
-   ```
-   ODOO_URL=http://localhost:8069
-   ODOO_DB=your_database_name
-   ODOO_USER=print_service_user
-   ODOO_PASSWORD=your_super_secure_password
-   ODOO_CHANNEL=your_odoo_channel
-   ```
-2. **Crucial Security Step:** Secure the file so only the owner can read it:
-   ```bash
-   chmod 600 .env
-   ```
+```ini
+ODOO_URL=http://localhost:8069
+ODOO_DB=your_database_name
+ODOO_USER=print_service_user
+ODOO_PASSWORD=your_super_secure_password
+ODOO_CHANNEL=your_odoo_channel
+```
+
+Secure the file so only the owner can read it:
+
+```bash
+chmod 600 .env
+```
 
 > **Note:** It is highly recommended to create a dedicated Odoo user (e.g., `print_service`) with minimal access rights solely for authenticating this client, rather than using the admin account.
 
 ## Usage
 
-Once installed and configured, simply run the CLI command:
+Once installed and configured, run:
 
 ```bash
 odoo-printer
 ```
 
-The client will automatically load the credentials from the `.env` file, authenticate via JSON-RPC, establish the WebSocket connection, and listen for incoming print jobs.
+The client loads credentials from the `.env` file, authenticates via JSON-RPC, establishes the WebSocket connection, and listens for incoming print jobs on the configured channel.
 
-### Overriding configurations
+### CLI arguments
 
-If you need to test a different environment or override the `.env` variables, you can pass arguments directly:
+All options can be overridden via command-line arguments:
 
 ```bash
-odoo-printer --url "https://odoo.example.com" --db "prod" --user "admin" --password "admin"
+odoo-printer \
+  --url "https://odoo.example.com" \
+  --db "prod" \
+  --user "print_service" \
+  --password "secret" \
+  --channel "printer_office_1"
 ```
 
-## How it works (Odoo Side)
+| Argument | Env variable | Description |
+|---|---|---|
+| `--url` | `ODOO_URL` | Odoo base URL |
+| `--db` | `ODOO_DB` | Odoo database name |
+| `--user` | `ODOO_USER` | Odoo username |
+| `--password` | `ODOO_PASSWORD` | Odoo password |
+| `--channel` | `ODOO_CHANNEL` | Odoo Bus channel to subscribe to |
 
-This client expects a specific JSON payload sent through the Odoo `bus.bus` on the printer channel. You will need a custom Odoo module to intercept the print action and send the payload.
+### Running multiple instances
 
-Expected payload structure sent to the bus:
+To serve multiple printers or locations, run one instance per channel with different `.env` files or by passing `--channel` directly:
+
+```bash
+odoo-printer --channel "printer_warehouse" &
+odoo-printer --channel "printer_office" &
+```
+
+## How it works (Odoo side)
+
+This client expects a specific JSON payload sent through `bus.bus` on the configured channel. You will need a custom Odoo module to intercept the print action and send the payload.
+
+### Bus message structure
 
 ```json
 {
-  "printer_name": "Name_of_CUPS_Printer",
-  "file_data": "JVBERi0xLjQKJcOkw7zDts..."
+  "type": "print_job",
+  "payload": {
+    "printer_name": "Name_of_CUPS_Printer",
+    "file_type": "pdf",
+    "file_data": "JVBERi0xLjQKJcOkw7zDts..."
+  }
 }
 ```
 
-Where `file_data` is the strictly Base64 encoded byte string of the PDF.
+| Field | Required | Values | Description |
+|---|---|---|---|
+| `printer_name` | No | Any CUPS printer name | Omit to use the system default printer |
+| `file_type` | No | `pdf` (default), `zpl` | Determines how the file is processed |
+| `file_data` | Yes | Base64 string | Strictly Base64-encoded file content |
+
+### PDF jobs
+
+Validated against the `%PDF` magic bytes and sent to CUPS via `lp`.
+
+### ZPL jobs
+
+Validated against the `^XA` ZPL start-of-label marker and sent to CUPS via `lp -o raw`, bypassing raster processing so the raw ZPL stream reaches the label printer directly.
+
+## License
+
+[LGPL-3.0](LICENSE)

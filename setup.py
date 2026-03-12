@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="odoo-print-client",
-    version="1.0.1",
+    version="0.0.1",
     description="A local WebSocket print client for Odoo, zero footprint.",
     long_description=Path("README.md").read_text(encoding="utf-8"),
     long_description_content_type="text/markdown",
