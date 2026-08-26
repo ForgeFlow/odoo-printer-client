@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: odoo-print-client
-Version: 0.0.1
+Version: 0.0.2
 Summary: A local WebSocket print client for Odoo, zero footprint.
 Home-page: https://github.com/forgeflow/odoo-print-client
 Author: David Jiménez
@@ -129,10 +129,13 @@ odoo-printer \
 | Argument | Env variable | Description |
 |---|---|---|
 | `--url` | `ODOO_URL` | Odoo base URL |
+| `--url-ssl-noverify` |  | (OPTIONAL) Odoo base URL - Don't verify SSL certificate (*) |
 | `--db` | `ODOO_DB` | Odoo database name |
 | `--user` | `ODOO_USER` | Odoo username |
 | `--password` | `ODOO_PASSWORD` | Odoo password |
 | `--channel` | `ODOO_CHANNEL` | Odoo Bus channel to subscribe to |
+
+(*) Only available at command-line, it's intented to be used for testing purposes
 
 ### Running multiple instances
 
