@@ -91,10 +91,13 @@ odoo-printer \
 | Argument | Env variable | Description |
 |---|---|---|
 | `--url` | `ODOO_URL` | Odoo base URL |
+| `--url-ssl-noverify` |  | (OPTIONAL) Odoo base URL - Don't verify SSL certificate (*) |
 | `--db` | `ODOO_DB` | Odoo database name |
 | `--user` | `ODOO_USER` | Odoo username |
 | `--password` | `ODOO_PASSWORD` | Odoo password |
 | `--channel` | `ODOO_CHANNEL` | Odoo Bus channel to subscribe to |
+
+(*) Only available at command-line, it's intented to be used for testing purposes
 
 ### Running multiple instances
 

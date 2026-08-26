@@ -5,6 +5,7 @@ import subprocess
 import time
 import requests
 import websocket
+import ssl
 
 _logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ def _print_zpl(zpl_bytes, printer_name):
 _RETRY_DELAYS = [5, 10, 30, 60, 120]
 
 
-def run_client(url, db, user, password, channel):
+def run_client(url, db, user, password, channel, ssl_verify=True):
     """
     Authenticates with Odoo and starts the WebSocket listening loop.
     Reconnects automatically on failure with exponential backoff.
@@ -95,7 +96,7 @@ def run_client(url, db, user, password, channel):
     attempt = 0
     while True:
         try:
-            _connect_and_listen(url, db, user, password, channel)
+            _connect_and_listen(url, db, user, password, channel, ssl_verify=ssl_verify)
         except KeyboardInterrupt:
             _logger.info("Shutting down.")
             break
@@ -108,7 +109,7 @@ def run_client(url, db, user, password, channel):
         attempt += 1
 
 
-def _connect_and_listen(url, db, user, password, channel):
+def _connect_and_listen(url, db, user, password, channel, ssl_verify=True):
     auth_payload = {
         "jsonrpc": "2.0",
         "method": "call",
@@ -117,6 +118,7 @@ def _connect_and_listen(url, db, user, password, channel):
 
     _logger.info("Authenticating with Odoo at %s (DB: %s)...", url, db)
     with requests.Session() as session:
+        session.verify = ssl_verify
         resp = session.post(f"{url}/web/session/authenticate", json=auth_payload)
         resp.raise_for_status()
         session_id = session.cookies.get("session_id")
@@ -127,7 +129,8 @@ def _connect_and_listen(url, db, user, password, channel):
     ws_url = url.replace("http", "ws").replace("https", "wss") + "/websocket"
     _logger.info("Connecting to WebSocket at %s...", ws_url)
 
-    socket = websocket.create_connection(ws_url, cookie=f"session_id={session_id}")
+    socket_sslopt={"cert_reqs": ssl.CERT_NONE} if not ssl_verify else {}
+    socket = websocket.create_connection(ws_url, cookie=f"session_id={session_id}", sslopt=socket_sslopt)
     socket.send(json.dumps({
         'event_name': 'subscribe',
         'data': {'channels': [channel], 'last': 0}

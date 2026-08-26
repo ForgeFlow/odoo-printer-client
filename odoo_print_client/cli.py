@@ -15,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description="Odoo Local Printer WebSocket Client")
     
     parser.add_argument("--url", default=os.getenv("ODOO_URL"), help="Odoo Base URL")
+    parser.add_argument("--url-ssl-noverify", action="store_true", help="Odoo Base URL - Don't verify SSL certificate")
     parser.add_argument("--db", default=os.getenv("ODOO_DB"), help="Odoo Database Name")
     parser.add_argument("--user", default=os.getenv("ODOO_USER"), help="Odoo Username")
     parser.add_argument("--password", default=os.getenv("ODOO_PASSWORD"), help="Odoo Password")
@@ -28,7 +29,8 @@ def main():
         print("[*] Please provide them via CLI arguments or set them in a .env file.")
         return
 
-    run_client(args.url, args.db, args.user, args.password, args.channel)
+    ssl_verify = not args.url_ssl_noverify
+    run_client(args.url, args.db, args.user, args.password, args.channel, ssl_verify=ssl_verify)
 
 if __name__ == "__main__":
     main()
