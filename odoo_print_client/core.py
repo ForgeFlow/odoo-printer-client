@@ -155,35 +155,38 @@ def _connect_and_listen(url, db, user, password, channel, ssl_verify=True,
         sslopt=socket_sslopt,
         timeout=ping_interval,
     )
-    socket.send(json.dumps({
-        'event_name': 'subscribe',
-        'data': {'channels': [channel], 'last': 0}
-    }))
+    try:
+        socket.send(json.dumps({
+            'event_name': 'subscribe',
+            'data': {'channels': [channel], 'last': 0}
+        }))
 
-    _logger.info("Connected and listening on '%s' channel...", channel)
-    if on_connected:
-        on_connected()
+        _logger.info("Connected and listening on '%s' channel...", channel)
+        if on_connected:
+            on_connected()
 
-    while True:
-        try:
-            raw_message = socket.recv()
-        except websocket.WebSocketTimeoutException:
-            _logger.debug("No traffic for %ds, sending ping", ping_interval)
-            socket.ping()
-            continue
-        if not raw_message:
-            if not socket.connected:
-                return
-            continue
-        try:
-            data = json.loads(raw_message)
-        except json.JSONDecodeError:
-            continue
+        while True:
+            try:
+                raw_message = socket.recv()
+            except websocket.WebSocketTimeoutException:
+                _logger.debug("No traffic for %ds, sending ping", ping_interval)
+                socket.ping()
+                continue
+            if not raw_message:
+                if not socket.connected:
+                    return
+                continue
+            try:
+                data = json.loads(raw_message)
+            except json.JSONDecodeError:
+                continue
 
-        if isinstance(data, list):
-            for event in data:
-                bus_message = event.get("message", {})
-                if isinstance(bus_message, dict) and bus_message.get("type") == "print_job":
-                    real_payload = bus_message.get("payload", {})
-                    if "file_data" in real_payload:
-                        process_print_job(real_payload)
+            if isinstance(data, list):
+                for event in data:
+                    bus_message = event.get("message", {})
+                    if isinstance(bus_message, dict) and bus_message.get("type") == "print_job":
+                        real_payload = bus_message.get("payload", {})
+                        if "file_data" in real_payload:
+                            process_print_job(real_payload)
+    finally:
+        socket.close()
