@@ -91,25 +91,41 @@ _RETRY_DELAYS = [5, 10, 30, 60, 120]
 def run_client(url, db, user, password, channel, ssl_verify=True):
     """
     Authenticates with Odoo and starts the WebSocket listening loop.
-    Reconnects automatically on failure with exponential backoff.
+    Reconnects automatically on failure with exponential backoff. The backoff
+    is reset every time a connection is successfully established, so a healthy
+    client that gets disconnected reconnects quickly instead of waiting for the
+    longest delay.
     """
     attempt = 0
     while True:
+        connected = False
+
+        def _on_connected():
+            nonlocal connected
+            connected = True
+
         try:
-            _connect_and_listen(url, db, user, password, channel, ssl_verify=ssl_verify)
+            _connect_and_listen(
+                url, db, user, password, channel,
+                ssl_verify=ssl_verify,
+                on_connected=_on_connected,
+            )
+            _logger.info("Connection closed by server.")
         except KeyboardInterrupt:
             _logger.info("Shutting down.")
             break
         except Exception as e:
             _logger.error("Unexpected error: %s", e)
 
+        if connected:
+            attempt = 0
         delay = _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
         _logger.info("Reconnecting in %d seconds... (attempt %d)", delay, attempt + 1)
         time.sleep(delay)
         attempt += 1
 
 
-def _connect_and_listen(url, db, user, password, channel, ssl_verify=True):
+def _connect_and_listen(url, db, user, password, channel, ssl_verify=True, on_connected=None):
     auth_payload = {
         "jsonrpc": "2.0",
         "method": "call",
@@ -129,17 +145,27 @@ def _connect_and_listen(url, db, user, password, channel, ssl_verify=True):
     ws_url = url.replace("http", "ws").replace("https", "wss") + "/websocket"
     _logger.info("Connecting to WebSocket at %s...", ws_url)
 
-    socket_sslopt={"cert_reqs": ssl.CERT_NONE} if not ssl_verify else {}
-    socket = websocket.create_connection(ws_url, cookie=f"session_id={session_id}", sslopt=socket_sslopt)
+    socket_sslopt = {"cert_reqs": ssl.CERT_NONE} if not ssl_verify else {}
+    socket = websocket.create_connection(
+        ws_url,
+        cookie=f"session_id={session_id}",
+        sslopt=socket_sslopt,
+    )
     socket.send(json.dumps({
         'event_name': 'subscribe',
         'data': {'channels': [channel], 'last': 0}
     }))
 
     _logger.info("Connected and listening on '%s' channel...", channel)
+    if on_connected:
+        on_connected()
 
     while True:
         raw_message = socket.recv()
+        if not raw_message:
+            if not socket.connected:
+                return
+            continue
         try:
             data = json.loads(raw_message)
         except json.JSONDecodeError:
