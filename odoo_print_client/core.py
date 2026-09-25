@@ -86,9 +86,10 @@ def _print_zpl(zpl_bytes, printer_name):
 
 
 _RETRY_DELAYS = [5, 10, 30, 60, 120]
+DEFAULT_PING_INTERVAL = 30
 
 
-def run_client(url, db, user, password, channel, ssl_verify=True):
+def run_client(url, db, user, password, channel, ssl_verify=True, ping_interval=DEFAULT_PING_INTERVAL):
     """
     Authenticates with Odoo and starts the WebSocket listening loop.
     Reconnects automatically on failure with exponential backoff. The backoff
@@ -108,6 +109,7 @@ def run_client(url, db, user, password, channel, ssl_verify=True):
             _connect_and_listen(
                 url, db, user, password, channel,
                 ssl_verify=ssl_verify,
+                ping_interval=ping_interval,
                 on_connected=_on_connected,
             )
             _logger.info("Connection closed by server.")
@@ -125,7 +127,8 @@ def run_client(url, db, user, password, channel, ssl_verify=True):
         attempt += 1
 
 
-def _connect_and_listen(url, db, user, password, channel, ssl_verify=True, on_connected=None):
+def _connect_and_listen(url, db, user, password, channel, ssl_verify=True,
+                        ping_interval=DEFAULT_PING_INTERVAL, on_connected=None):
     auth_payload = {
         "jsonrpc": "2.0",
         "method": "call",
@@ -150,6 +153,7 @@ def _connect_and_listen(url, db, user, password, channel, ssl_verify=True, on_co
         ws_url,
         cookie=f"session_id={session_id}",
         sslopt=socket_sslopt,
+        timeout=ping_interval,
     )
     socket.send(json.dumps({
         'event_name': 'subscribe',
@@ -161,7 +165,12 @@ def _connect_and_listen(url, db, user, password, channel, ssl_verify=True, on_co
         on_connected()
 
     while True:
-        raw_message = socket.recv()
+        try:
+            raw_message = socket.recv()
+        except websocket.WebSocketTimeoutException:
+            _logger.debug("No traffic for %ds, sending ping", ping_interval)
+            socket.ping()
+            continue
         if not raw_message:
             if not socket.connected:
                 return

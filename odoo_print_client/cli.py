@@ -2,7 +2,7 @@ import logging
 import os
 import argparse
 from dotenv import load_dotenv
-from .core import run_client
+from .core import run_client, DEFAULT_PING_INTERVAL
 
 def main():
     load_dotenv()
@@ -20,6 +20,12 @@ def main():
     parser.add_argument("--user", default=os.getenv("ODOO_USER"), help="Odoo Username")
     parser.add_argument("--password", default=os.getenv("ODOO_PASSWORD"), help="Odoo Password")
     parser.add_argument("--channel", default=os.getenv("ODOO_CHANNEL"), help="WebSocket Channel to listen to")
+    parser.add_argument(
+        "--ping-interval",
+        type=int,
+        default=int(os.getenv("ODOO_PING_INTERVAL", DEFAULT_PING_INTERVAL)),
+        help="Seconds of inactivity before sending a WebSocket keepalive ping",
+    )
 
     args = parser.parse_args()
 
@@ -30,7 +36,11 @@ def main():
         return
 
     ssl_verify = not args.url_ssl_noverify
-    run_client(args.url, args.db, args.user, args.password, args.channel, ssl_verify=ssl_verify)
+    run_client(
+        args.url, args.db, args.user, args.password, args.channel,
+        ssl_verify=ssl_verify,
+        ping_interval=args.ping_interval,
+    )
 
 if __name__ == "__main__":
     main()
