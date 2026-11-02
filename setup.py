@@ -9,7 +9,7 @@ setup(
     long_description_content_type="text/markdown",
     author="David Jiménez",
     author_email="david.jimenez@forgeflow.com",
-    url="https://github.com/forgeflow/odoo-print-client",
+    url="https://github.com/forgeflow/odoo-printer-client",
     license="LGPL-3.0-only",
     python_requires=">=3.7",
     packages=find_packages(exclude=["venv*"]),
