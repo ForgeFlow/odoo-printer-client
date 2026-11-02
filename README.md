@@ -11,7 +11,7 @@ A secure, zero-footprint local printing client for Odoo. This client connects to
   * Uses strict Base64 decoding.
   * Prevents OS Command Injection by executing subprocesses safely without `shell=True`.
 * **Configurable Channel:** Subscribe to any Odoo Bus channel via environment variable or CLI argument, allowing multiple clients to listen on different channels simultaneously.
-* **Resilient Connection:** Sends WebSocket keepalive pings during idle periods (so proxies and NAT devices do not drop the connection) and reconnects automatically. The reconnection backoff resets after every successful connection, so a server-side disconnect is recovered within seconds.
+* **Resilient Connection:** Sends WebSocket keepalive pings during idle periods (so proxies and NAT devices do not drop the connection) and reconnects automatically. The reconnection backoff resets after every successful connection, so a server-side disconnect is recovered within seconds, and every reconnection resumes from the last bus notification received, so the print jobs sent while the client was disconnected are delivered instead of lost.
 * **Firewall Friendly:** Uses WebSockets to initiate an outbound connection to Odoo. No inbound ports need to be opened on the client's local network.
 * **Environment Variables (.env):** Securely manage Odoo credentials without hardcoding them.
 

@@ -12,7 +12,7 @@ setup(
     url="https://github.com/forgeflow/odoo-printer-client",
     license="LGPL-3.0-only",
     python_requires=">=3.7",
-    packages=find_packages(exclude=["venv*"]),
+    packages=find_packages(exclude=["venv*", "tests*"]),
     install_requires=[
         "requests",
         "websocket-client",

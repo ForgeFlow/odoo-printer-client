@@ -95,9 +95,13 @@ def run_client(url, db, user, password, channel, ssl_verify=True, ping_interval=
     Reconnects automatically on failure with exponential backoff. The backoff
     is reset every time a connection is successfully established, so a healthy
     client that gets disconnected reconnects quickly instead of waiting for the
-    longest delay.
+    longest delay. Every reconnection subscribes from the last bus notification
+    id received, so the jobs Odoo sent while the client was disconnected are
+    delivered on reconnection instead of being lost (a subscription from 0 only
+    replays the last 50 seconds of the bus).
     """
     attempt = 0
+    state = {"last": 0}
     while True:
         connected = False
 
@@ -111,6 +115,7 @@ def run_client(url, db, user, password, channel, ssl_verify=True, ping_interval=
                 ssl_verify=ssl_verify,
                 ping_interval=ping_interval,
                 on_connected=_on_connected,
+                state=state,
             )
             _logger.info("Connection closed by server.")
         except KeyboardInterrupt:
@@ -128,7 +133,16 @@ def run_client(url, db, user, password, channel, ssl_verify=True, ping_interval=
 
 
 def _connect_and_listen(url, db, user, password, channel, ssl_verify=True,
-                        ping_interval=DEFAULT_PING_INTERVAL, on_connected=None):
+                        ping_interval=DEFAULT_PING_INTERVAL, on_connected=None,
+                        state=None):
+    """
+    One connection: authenticate, subscribe to the channel from the last
+    notification id in `state` and dispatch print jobs until the socket
+    closes. `state["last"]` is updated with every notification id received, so
+    the caller can resume from it on the next connection.
+    """
+    if state is None:
+        state = {"last": 0}
     auth_payload = {
         "jsonrpc": "2.0",
         "method": "call",
@@ -158,10 +172,13 @@ def _connect_and_listen(url, db, user, password, channel, ssl_verify=True,
     try:
         socket.send(json.dumps({
             'event_name': 'subscribe',
-            'data': {'channels': [channel], 'last': 0}
+            'data': {'channels': [channel], 'last': state["last"]}
         }))
 
-        _logger.info("Connected and listening on '%s' channel...", channel)
+        if state["last"]:
+            _logger.info("Connected and listening on '%s' channel, resuming after notification %d...", channel, state["last"])
+        else:
+            _logger.info("Connected and listening on '%s' channel...", channel)
         if on_connected:
             on_connected()
 
@@ -183,6 +200,11 @@ def _connect_and_listen(url, db, user, password, channel, ssl_verify=True,
 
             if isinstance(data, list):
                 for event in data:
+                    if not isinstance(event, dict):
+                        continue
+                    event_id = event.get("id")
+                    if isinstance(event_id, int) and event_id > state["last"]:
+                        state["last"] = event_id
                     bus_message = event.get("message", {})
                     if isinstance(bus_message, dict) and bus_message.get("type") == "print_job":
                         real_payload = bus_message.get("payload", {})
