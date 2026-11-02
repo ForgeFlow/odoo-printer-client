@@ -1,12 +1,12 @@
 Metadata-Version: 2.4
 Name: odoo-print-client
-Version: 0.0.3
+Version: 1.0.0
 Summary: A local WebSocket print client for Odoo, zero footprint.
 Home-page: https://github.com/forgeflow/odoo-printer-client
 Author: David Jiménez
 Author-email: david.jimenez@forgeflow.com
 License: LGPL-3.0-only
-Classifier: Development Status :: 4 - Beta
+Classifier: Development Status :: 5 - Production/Stable
 Classifier: Intended Audience :: System Administrators
 Classifier: License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)
 Classifier: Operating System :: POSIX :: Linux
