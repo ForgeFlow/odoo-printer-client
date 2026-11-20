@@ -2,7 +2,7 @@ import logging
 import os
 import argparse
 from dotenv import load_dotenv
-from .core import run_client, DEFAULT_PING_INTERVAL
+from .core import run_client, DEFAULT_PING_INTERVAL, DEFAULT_POLL_INTERVAL
 
 def main():
     load_dotenv()
@@ -26,6 +26,12 @@ def main():
         default=int(os.getenv("ODOO_PING_INTERVAL", DEFAULT_PING_INTERVAL)),
         help="Seconds of inactivity before sending a WebSocket keepalive ping",
     )
+    parser.add_argument(
+        "--poll-interval",
+        type=int,
+        default=int(os.getenv("ODOO_POLL_INTERVAL", DEFAULT_POLL_INTERVAL)),
+        help="Seconds between two checks of the CUPS queue for the jobs to report to Odoo",
+    )
 
     args = parser.parse_args()
 
@@ -40,6 +46,7 @@ def main():
         args.url, args.db, args.user, args.password, args.channel,
         ssl_verify=ssl_verify,
         ping_interval=args.ping_interval,
+        poll_interval=args.poll_interval,
     )
 
 if __name__ == "__main__":
