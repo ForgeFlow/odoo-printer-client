@@ -36,6 +36,7 @@ def _session_mock():
     session = mock.MagicMock()
     session.__enter__.return_value = session
     session.post.return_value.raise_for_status.return_value = None
+    session.post.return_value.json.return_value = {"result": {"uid": 7}}
     session.cookies.get.return_value = "sid"
     return session
 
@@ -63,7 +64,7 @@ class ResumeFromLastNotificationTest(unittest.TestCase):
         ])]
         sock, printed = self._connect(frames, state)
         self.assertEqual(sock.sent[0]["data"], {"channels": ["LBL11"], "last": 0})
-        printed.assert_called_once_with(JOB)
+        printed.assert_called_once_with(JOB, None)
         self.assertEqual(state["last"], 7)
         self.assertTrue(sock.closed)
 
@@ -98,10 +99,102 @@ class ResumeFromLastNotificationTest(unittest.TestCase):
             raise KeyboardInterrupt()
 
         with mock.patch.object(core, "_connect_and_listen", side_effect=fake_connect), \
+                mock.patch.object(core.JobTracker, "start"), \
                 mock.patch.object(core.time, "sleep") as sleep:
             core.run_client("https://odoo", "prod", "u", "p", "LBL11")
         self.assertEqual(seen, [0, 42])
         sleep.assert_called_once_with(core._RETRY_DELAYS[0])
+
+
+
+def _run(stdout=b""):
+    return mock.MagicMock(stdout=stdout)
+
+
+def _rpc(result=True, error=None):
+    response = mock.MagicMock()
+    response.json.return_value = {"error": error} if error else {"result": result}
+    return response
+
+
+class JobTrackerTest(unittest.TestCase):
+    def setUp(self):
+        self.tracker = core.JobTracker("https://odoo", "prod", "u", "p")
+        self.session = mock.MagicMock()
+        self.session.post.return_value = _rpc()
+        self.tracker.session = self.session
+
+    def _poll(self, queue):
+        def run(cmd, **kwargs):
+            self.assertEqual(cmd[:3], ["lpstat", "-W", "not-completed"])
+            return _run(queue)
+
+        with mock.patch.object(core.subprocess, "run", side_effect=run):
+            self.tracker.poll()
+
+    def _reported(self):
+        return [
+            (call.args[0], call.kwargs["json"]["params"])
+            for call in self.session.post.call_args_list
+        ]
+
+    def test_reports_the_job_when_it_leaves_the_queue(self):
+        def lp(cmd, **kwargs):
+            self.assertEqual(cmd[0], "lp")
+            self.assertEqual(kwargs["env"]["LC_ALL"], "C")
+            return _run(b"request id is LBL11-42 (1 file(s))\n")
+
+        with mock.patch.object(core.subprocess, "run", side_effect=lp):
+            core.process_print_job(dict(JOB, job_uuid="abc"), self.tracker)
+        self._poll(b"LBL11-42 pi 1024 Thu 20 Nov 2026\n")
+        self.assertEqual(self._reported(), [])
+        self._poll(b"")
+        self.assertEqual(self._reported(), [(
+            "https://odoo/printing/websocket/job/state",
+            {"job_uuid": "abc", "state": "completed", "cups_job_id": 42},
+        )])
+        self._poll(b"")
+        self.assertEqual(len(self._reported()), 1)
+
+    def test_refused_job_is_reported_aborted_even_without_lpstat(self):
+        error = core.subprocess.CalledProcessError(1, "lp")
+        with mock.patch.object(core.subprocess, "run", side_effect=error):
+            core.process_print_job(dict(JOB, job_uuid="abc"), self.tracker)
+        self.tracker.add("def", "LBL11-43")
+        failing = core.subprocess.TimeoutExpired("lpstat", 10)
+        with mock.patch.object(core.subprocess, "run", side_effect=failing):
+            with self.assertRaises(core.subprocess.TimeoutExpired):
+                self.tracker.poll()
+        self.assertEqual(self._reported()[0][1], {"job_uuid": "abc", "state": "aborted"})
+
+    def test_server_error_is_retried_and_unknown_job_dropped(self):
+        self.tracker.add("abc", "LBL11-42")
+        self.tracker.add("gone", "LBL11-44")
+        self.session.post.side_effect = [_rpc(error={"code": 200, "message": "boom"})]
+        with self.assertRaises(RuntimeError):
+            self._poll(b"")
+        self.session.post.side_effect = [_rpc(), _rpc(error={"code": 404})]
+        self._poll(b"")
+        self.assertEqual(self.tracker.jobs, {})
+
+    def test_expired_session_is_renewed_in_the_same_report(self):
+        self.tracker.add("abc", "LBL11-42")
+        self.session.post.return_value = _rpc(error={"code": 100})
+        fresh = _session_mock()
+        fresh.post.side_effect = [_rpc({"uid": 7}), _rpc()]
+        with mock.patch.object(core.requests, "Session", return_value=fresh):
+            self._poll(b"")
+        self.assertEqual(self.tracker.jobs, {})
+        self.assertEqual(
+            fresh.post.call_args_list[1].args[0], "https://odoo/printing/websocket/job/state"
+        )
+
+    def test_job_without_uuid_is_not_tracked(self):
+        with mock.patch.object(
+            core.subprocess, "run", return_value=_run(b"request id is LBL11-43 (1 file(s))\n")
+        ):
+            core.process_print_job(JOB, self.tracker)
+        self.assertEqual(self.tracker.jobs, {})
 
 
 if __name__ == "__main__":

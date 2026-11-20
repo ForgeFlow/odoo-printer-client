@@ -12,6 +12,7 @@ A secure, zero-footprint local printing client for Odoo. This client connects to
   * Prevents OS Command Injection by executing subprocesses safely without `shell=True`.
 * **Configurable Channel:** Subscribe to any Odoo Bus channel via environment variable or CLI argument, allowing multiple clients to listen on different channels simultaneously.
 * **Resilient Connection:** Sends WebSocket keepalive pings during idle periods (so proxies and NAT devices do not drop the connection) and reconnects automatically. The reconnection backoff resets after every successful connection, so a server-side disconnect is recovered within seconds, and every reconnection resumes from the last bus notification received, so the print jobs sent while the client was disconnected are delivered instead of lost.
+* **Job Confirmation:** When a job carries a `job_uuid`, the client watches the CUPS queue and tells Odoo when the job leaves it, without talking to the printer.
 * **Firewall Friendly:** Uses WebSockets to initiate an outbound connection to Odoo. No inbound ports need to be opened on the client's local network.
 * **Environment Variables (.env):** Securely manage Odoo credentials without hardcoding them.
 
@@ -58,6 +59,8 @@ ODOO_PASSWORD=your_super_secure_password
 ODOO_CHANNEL=your_odoo_channel
 # Optional: seconds of inactivity before sending a keepalive ping (default 30)
 ODOO_PING_INTERVAL=30
+# Optional: seconds between two checks of the CUPS queue (default 5)
+ODOO_POLL_INTERVAL=5
 ```
 
 Secure the file so only the owner can read it:
@@ -100,6 +103,7 @@ odoo-printer \
 | `--password` | `ODOO_PASSWORD` | Odoo password |
 | `--channel` | `ODOO_CHANNEL` | Odoo Bus channel to subscribe to |
 | `--ping-interval` | `ODOO_PING_INTERVAL` | (OPTIONAL) Seconds of inactivity before sending a WebSocket keepalive ping (default: 30) |
+| `--poll-interval` | `ODOO_POLL_INTERVAL` | (OPTIONAL) Seconds between two checks of the CUPS queue for the jobs to report to Odoo (default: 5) |
 
 (*) Only available at command-line, it's intented to be used for testing purposes
 
@@ -134,6 +138,13 @@ This client expects a specific JSON payload sent through `bus.bus` on the config
 | `printer_name` | No | Any CUPS printer name | Omit to use the system default printer |
 | `file_type` | No | `pdf` (default), `zpl` | Determines how the file is processed |
 | `file_data` | Yes | Base64 string | Strictly Base64-encoded file content |
+| `job_uuid` | No | Any string | Id of the job in Odoo; when present, the client reports when the job leaves the CUPS queue |
+
+### Job confirmation
+
+For a job with a `job_uuid`, the client keeps the CUPS job id returned by `lp` and checks `lpstat -W not-completed -o` every `--poll-interval` seconds. When the job is no longer in the queue, it posts, with the same user, a JSON-RPC call to `/printing/websocket/job/state` with `job_uuid`, `state` set to `completed` and `cups_job_id`; a job the client refuses or `lp` rejects is reported as `aborted`. Odoo's `base_report_to_printer_websocket` module provides the route.
+
+`completed` means the job left the CUPS queue: printed, but also cancelled or aborted in the local CUPS. A report Odoo cannot take is sent again on the next check, unless Odoo does not know the job. Jobs still in the queue when the client restarts are never reported.
 
 ### PDF jobs
 
